@@ -9,7 +9,7 @@ import type { Session } from '@supabase/supabase-js';
 
 const GREEN = '#1D9E75';
 
-const BioGuardTheme = {
+const NatureTraceTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
@@ -28,7 +28,7 @@ function SplashScreen() {
       <View style={styles.logoBox}>
         <Text style={styles.logoEmoji}>🛡️</Text>
       </View>
-      <Text style={styles.brand}>BioGuard</Text>
+      <Text style={styles.brand}>NatureTrace</Text>
       <Text style={styles.tagline}>Biodiversity Reporting Platform</Text>
     </View>
   );
@@ -62,7 +62,7 @@ export default function RootLayout() {
   }, [session]);
 
   return (
-    <ThemeProvider value={BioGuardTheme}>
+    <ThemeProvider value={NatureTraceTheme}>
       <Stack>
         <Stack.Screen name="(tabs)"  options={{ headerShown: false }} />
         <Stack.Screen name="login"   options={{ headerShown: false, animation: 'fade' }} />

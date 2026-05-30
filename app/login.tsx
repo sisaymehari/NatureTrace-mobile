@@ -47,7 +47,7 @@ export default function LoginScreen() {
           <View style={styles.logoBox}>
             <Text style={styles.logoEmoji}>🛡️</Text>
           </View>
-          <Text style={styles.brand}>BioGuard</Text>
+          <Text style={styles.brand}>NatureTrace</Text>
           <Text style={styles.tagline}>Biodiversity Reporting Platform</Text>
         </View>
 

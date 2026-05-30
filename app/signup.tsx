@@ -68,7 +68,7 @@ export default function SignupScreen() {
           <View style={styles.logoBox}>
             <Text style={styles.logoEmoji}>🛡️</Text>
           </View>
-          <Text style={styles.brand}>BioGuard</Text>
+          <Text style={styles.brand}>NatureTrace</Text>
           <Text style={styles.tagline}>Join the community</Text>
         </View>
 

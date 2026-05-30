@@ -127,7 +127,7 @@ export default function ProfileScreen() {
               {(profile.username ?? 'U').charAt(0).toUpperCase()}
             </Text>
           </View>
-          <Text style={styles.username}>{profile.username ?? 'BioGuard User'}</Text>
+          <Text style={styles.username}>{profile.username ?? 'NatureTrace User'}</Text>
           <Text style={styles.reportCount}>{reports.length} reports submitted</Text>
         </View>
 

@@ -15,8 +15,11 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 import Ionicons from '@expo/vector-icons/Ionicons';
+
+console.log('[Report] module loaded — decode type:', typeof decode);
 import { supabase } from '@/lib/supabase';
 import { AppColors } from '@/constants/theme';
 
@@ -34,7 +37,7 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-      { headers: { 'Accept-Language': 'en', 'User-Agent': 'BioGuard/1.0' } },
+      { headers: { 'Accept-Language': 'en', 'User-Agent': 'NatureTrace/1.0' } },
     );
     if (!res.ok) return '';
     const data = await res.json();
@@ -56,42 +59,81 @@ export default function ReportScreen() {
   const [submitting,   setSubmitting]   = useState(false);
   const [identifying,  setIdentifying]  = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState('');
+  const [aiConfidence, setAiConfidence] = useState<number | null>(null);
+  const [aiIsInvasive, setAiIsInvasive] = useState(false);
 
   // ── AI identification ────────────────────────────────────────────────────────
   async function identifySpecies(uri: string) {
     setIdentifying(true);
     setAiSuggestion('');
+    setAiConfidence(null);
+    setAiIsInvasive(false);
     try {
       console.log('[AI] reading photo from:', uri);
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
       console.log('[AI] base64 length:', base64.length, '(~', Math.round(base64.length * 0.75 / 1024), 'KB)');
 
-      const url = 'https://bioguard-app.netlify.app/api/identify';
-      const body = JSON.stringify({ image_base64: base64, description: '', region: 'UK' });
-      console.log('[AI] POST', url, '— body size:', body.length, 'bytes (~', Math.round(body.length / 1024), 'KB)');
+      const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+      console.log('[AI] API key present:', !!apiKey, '| prefix:', apiKey?.slice(0, 14) ?? 'MISSING');
 
-      const res = await fetch(url, {
+      const body = JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
+            },
+            {
+              type: 'text',
+              text: 'You are a biodiversity expert specialising in UK wildlife, plants, marine life, and invasive species. Identify this species and respond ONLY with valid JSON (no markdown, no explanation): {"species_name":"...","scientific_name":"...","category":"wildlife|plant|marine|invasive","confidence":0,"is_invasive":false,"conservation_note":"..."}',
+            },
+          ],
+        }],
+      });
+      console.log('[AI] POST api.anthropic.com — body size:', body.length, 'bytes (~', Math.round(body.length / 1024), 'KB)');
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey ?? '',
+          'anthropic-version': '2023-06-01',
+        },
         body,
       });
 
       console.log('[AI] response status:', res.status, res.statusText);
-      // Read as text first — JSON.parse can fail silently if the API returns HTML/plain-text on error
       const text = await res.text();
       console.log('[AI] response body (first 500 chars):', text.slice(0, 500));
 
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
 
-      const data = JSON.parse(text);
+      const envelope = JSON.parse(text);
+      const rawJson = envelope.content?.[0]?.text ?? '';
+      console.log('[AI] content[0].text:', rawJson.slice(0, 300));
+
+      const data = JSON.parse(rawJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim());
+      console.log('[AI] parsed result:', JSON.stringify(data));
+
       if (data.species_name) {
         setSpeciesName(data.species_name);
         setAiSuggestion(data.species_name);
       }
       if (data.category && CATEGORIES.find((c) => c.value === data.category)) {
         setCategory(data.category as Category);
+      }
+      if (data.confidence != null) {
+        // Normalise: model may return 0-1 or 0-100
+        const pct = data.confidence <= 1 ? Math.round(data.confidence * 100) : Math.round(data.confidence);
+        setAiConfidence(pct);
+        console.log('[AI] confidence:', data.confidence, '→', pct, '%');
+      }
+      if (data.is_invasive) {
+        setAiIsInvasive(true);
+        setCategory('invasive');
       }
     } catch (err: any) {
       console.error('[AI] identify error:', err?.message ?? String(err));
@@ -115,8 +157,10 @@ export default function ReportScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setPhoto(result.assets[0]);
-      identifySpecies(result.assets[0].uri);
+      const asset = result.assets[0];
+      console.log('[Photo] picked — uri:', asset.uri, '| mimeType:', asset.mimeType, '| size:', asset.width, 'x', asset.height, '| fileSize:', asset.fileSize);
+      setPhoto(asset);
+      identifySpecies(asset.uri);
     }
   }
 
@@ -132,14 +176,18 @@ export default function ReportScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setPhoto(result.assets[0]);
-      identifySpecies(result.assets[0].uri);
+      const asset = result.assets[0];
+      console.log('[Photo] taken — uri:', asset.uri, '| mimeType:', asset.mimeType, '| size:', asset.width, 'x', asset.height, '| fileSize:', asset.fileSize);
+      setPhoto(asset);
+      identifySpecies(asset.uri);
     }
   }
 
   function clearPhoto() {
     setPhoto(null);
     setAiSuggestion('');
+    setAiConfidence(null);
+    setAiIsInvasive(false);
   }
 
   // ── Location ─────────────────────────────────────────────────────────────────
@@ -183,20 +231,17 @@ export default function ReportScreen() {
         const fileName = `${Date.now()}.${fileExt}`;
 
         const base64 = await FileSystem.readAsStringAsync(photo.uri, {
-          encoding: FileSystem.EncodingType.Base64,
+          encoding: 'base64',
         });
         console.log('[Report] base64 length:', base64.length, '(~', Math.round(base64.length * 0.75 / 1024), 'KB file)');
 
-        // Uint8Array is more compatible with Supabase RN than passing .buffer (ArrayBuffer)
-        const binary = atob(base64);
-        const uint8Array = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) uint8Array[i] = binary.charCodeAt(i);
-        console.log('[Report] Uint8Array byteLength:', uint8Array.byteLength);
+        const byteArray = decode(base64);
+        console.log('[Report] byteArray byteLength:', byteArray.byteLength);
 
         console.log('[Report] uploading', fileName, 'contentType:', mimeType);
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('reports')
-          .upload(fileName, uint8Array, { contentType: mimeType, upsert: true });
+          .upload(fileName, byteArray, { contentType: mimeType, upsert: true });
 
         if (uploadError) {
           console.error('[Report] upload error (full):', JSON.stringify(uploadError));
@@ -212,25 +257,60 @@ export default function ReportScreen() {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       console.log('[Report] auth user:', user?.id ?? 'null', 'error:', userError?.message ?? 'none');
 
+      if (!user) {
+        throw new Error('Not authenticated — please log in and try again.');
+      }
+
       const locationValue = location
         ? `SRID=4326;POINT(${location.longitude} ${location.latitude})`
         : null;
-      console.log('[Report] inserting — category:', category, 'location:', locationValue, 'location_name:', locationName || null);
 
-      const { error: insertError } = await supabase.from('reports').insert({
-        user_id:       user?.id,
+      const insertPayload = {
+        user_id:       user.id,
         category,
         species_name:  speciesName.trim() || null,
         description:   description.trim(),
         photo_url,
         location:      locationValue,
         location_name: locationName || null,
-      });
+        ai_confidence: aiConfidence,
+        is_invasive:   aiIsInvasive,
+        severity:      aiIsInvasive ? 'high' : 'low',
+        status:        'pending',
+      };
+      console.log('[Report] insert payload:', JSON.stringify(insertPayload));
 
-      if (insertError) {
-        console.error('[Report] insert error (full):', JSON.stringify(insertError));
-        throw insertError;
+      console.log('[Submit] user:', user?.id, 'userError:', userError?.message ?? null);
+      console.log('[Submit] insert payload:', JSON.stringify({
+        user_id: user?.id,
+        category,
+        species_name: speciesName,
+        location: location ? `SRID=4326;POINT(${location.longitude} ${location.latitude})` : null,
+        location_name: locationName,
+        description,
+        photo_url,
+        is_invasive: aiIsInvasive,
+        ai_confidence: aiConfidence,
+        status: 'pending',
+      }));
+
+      try {
+        const { data: testData, error: testError } = await supabase
+          .from('reports')
+          .select('id')
+          .limit(1);
+        console.log('[Test] SELECT works:', testData, testError);
+      } catch (e) {
+        console.log('[Test] SELECT failed:', e);
       }
+
+      const { data: insertData, error: insertError } = await supabase
+        .from('reports')
+        .insert(insertPayload)
+        .select();
+      console.log('[Insert] data:', JSON.stringify(insertData));
+      console.log('[Insert] error:', JSON.stringify(insertError));
+      if (insertError) throw new Error(JSON.stringify(insertError));
       console.log('[Report] insert success');
 
       Alert.alert('Report submitted! 🌿', 'Thank you for contributing to biodiversity tracking.', [
@@ -244,6 +324,8 @@ export default function ReportScreen() {
             setLocation(null);
             setLocationName('');
             setAiSuggestion('');
+            setAiConfidence(null);
+            setAiIsInvasive(false);
           },
         },
       ]);
@@ -301,7 +383,9 @@ export default function ReportScreen() {
               {aiSuggestion && !identifying && (
                 <View style={styles.aiPill}>
                   <Ionicons name="sparkles" size={13} color={AppColors.primary} />
-                  <Text style={styles.aiPillText}>AI identified: {aiSuggestion}</Text>
+                  <Text style={styles.aiPillText}>
+                    AI identified: {aiSuggestion}{aiConfidence != null ? ` · ${aiConfidence}% confident` : ''}
+                  </Text>
                 </View>
               )}
             </>

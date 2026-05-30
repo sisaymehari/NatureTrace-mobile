@@ -62,7 +62,7 @@ export default function HomeScreen() {
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.appName}>🌿 BioGuard</Text>
+          <Text style={styles.appName}>🌿 NatureTrace</Text>
           <Text style={styles.tagline}>Protecting biodiversity, one report at a time</Text>
         </View>
 
