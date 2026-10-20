@@ -69,54 +69,17 @@ export default function ReportScreen() {
     setAiConfidence(null);
     setAiIsInvasive(false);
     try {
-      console.log('[AI] reading photo from:', uri);
       const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-      console.log('[AI] base64 length:', base64.length, '(~', Math.round(base64.length * 0.75 / 1024), 'KB)');
 
-      const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-      console.log('[AI] API key present:', !!apiKey, '| prefix:', apiKey?.slice(0, 14) ?? 'MISSING');
-
-      const body = JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
-            },
-            {
-              type: 'text',
-              text: 'You are a biodiversity expert specialising in UK wildlife, plants, marine life, and invasive species. Identify this species and respond ONLY with valid JSON (no markdown, no explanation): {"species_name":"...","scientific_name":"...","category":"wildlife|plant|marine|invasive","confidence":0,"is_invasive":false,"conservation_note":"..."}',
-            },
-          ],
-        }],
-      });
-      console.log('[AI] POST api.anthropic.com — body size:', body.length, 'bytes (~', Math.round(body.length / 1024), 'KB)');
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/identify`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey ?? '',
-          'anthropic-version': '2023-06-01',
-        },
-        body,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: base64, description, region: 'UK' }),
       });
 
-      console.log('[AI] response status:', res.status, res.statusText);
-      const text = await res.text();
-      console.log('[AI] response body (first 500 chars):', text.slice(0, 500));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-
-      const envelope = JSON.parse(text);
-      const rawJson = envelope.content?.[0]?.text ?? '';
-      console.log('[AI] content[0].text:', rawJson.slice(0, 300));
-
-      const data = JSON.parse(rawJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim());
-      console.log('[AI] parsed result:', JSON.stringify(data));
+      const data = await res.json();
 
       if (data.species_name) {
         setSpeciesName(data.species_name);
@@ -129,7 +92,6 @@ export default function ReportScreen() {
         // Normalise: model may return 0-1 or 0-100
         const pct = data.confidence <= 1 ? Math.round(data.confidence * 100) : Math.round(data.confidence);
         setAiConfidence(pct);
-        console.log('[AI] confidence:', data.confidence, '→', pct, '%');
       }
       if (data.is_invasive) {
         setAiIsInvasive(true);
@@ -154,7 +116,7 @@ export default function ReportScreen() {
       mediaTypes: 'images',
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: 0.6,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
@@ -173,7 +135,7 @@ export default function ReportScreen() {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: 0.6,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
