@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "bioguard-mobile",
+    "name": "NatureTrace",
     "slug": "bioguard-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,10 +11,10 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "BioGuard needs your location to show reports near you.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "BioGuard needs your location to show reports near you.",
-        "NSCameraUsageDescription": "BioGuard uses your camera to capture wildlife photos.",
-        "NSPhotoLibraryUsageDescription": "BioGuard accesses your photos to attach images to reports."
+        "NSLocationWhenInUseUsageDescription": "NatureTrace needs your location to show reports near you.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "NatureTrace needs your location to show reports near you.",
+        "NSCameraUsageDescription": "NatureTrace uses your camera to capture wildlife photos.",
+        "NSPhotoLibraryUsageDescription": "NatureTrace accesses your photos to attach images to reports."
       }
     },
     "android": {
